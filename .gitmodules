@@ -1,0 +1,6 @@
+[submodule "cmake-project"]
+	path = cmake-project
+	url = https://github.com/Todd-Fulton/cmake-project
+[submodule "cmake-toolchains"]
+	path = cmake-toolchains
+	url = https://github.com/Todd-Fulton/cmake-toolchains
