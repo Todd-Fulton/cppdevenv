@@ -1,9 +1,36 @@
 # syntax=docker/dockerfile:labs
 FROM gccbld AS gcc-build
+ARG rebuild=false
+ARG cpu_threads=6
+
+# update source if REBUILD
+WORKDIR /gcc-source
+RUN DEBIAN_FRONTEND=noninteractive [ ${rebuild} = true ] && \
+    git pull && \
+    apt-get update && \
+    apt-get full-upgrade --yes
+
+# rebuild if REBUILD
+WORKDIR /gcc-build-native
+RUN [ ${rebuild} = true ] && \
+    make distclean && \
+    /gcc-source/configure \
+        --enable-languages=c,c++ \
+        --disable-multilib \
+        --enable-libstdcxx-backtrace=yes \
+        --enable-lto \
+        --prefix=/opt/gcc-git && \
+    make -j${cpu_threads}
+
+# install result
+WORKDIR /gcc-build-native
+RUN make install
+
 FROM baseimg AS base
+# copy from /opt/gcc-git in final image
 COPY --from=gcc-build /opt/gcc-git /opt/gcc-git
 
-# install runtime deps for gcc
+# install deps for gcc
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install --yes \
     libgmp10 \
@@ -11,5 +38,12 @@ RUN DEBIAN_FRONTEND=noninteractive \
     libmpc3 \
     libisl23 \
     libzstd1 \
+    libc-dev-bin libc-devtools libc6-dev \
     # TODO: should we compile binutils from source???
     binutils
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get remove gcc --yes && \
+    apt-get autoremove --yes && \
+    apt-get autoclean --yes && \
+    rm -rf /var/lib/apt/lists/*

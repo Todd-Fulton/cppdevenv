@@ -1,2 +1,4 @@
 .git*
 build_all.sh
+*.md
+UNLICENSE

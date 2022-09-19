@@ -1,9 +1,12 @@
 
-# TODO: get date in format YYYY/MM/DD for tags
+# get date in format YYYY-MM-DD for tags
+variable "DATE" {
+    default="${formatdate("YYYY-MM-DD", timestamp())}"
+}
 
 target "base" {
     dockerfile = "Dockerfile.base"
-    tags = ["cppdevenv-base:latest"]
+    tags = ["cppdevenv-base:latest", "cppdevenv-base:${DATE}"]
 }
 
 target "base-upgrade" {
@@ -11,7 +14,7 @@ target "base-upgrade" {
     contexts = {
         baseimg = "target:base"
     }
-    tags = ["cppdevenv-base-upgrade:latest"]
+    tags = ["cppdevenv-base-upgrade:latest", "cppdevenv-base-upgrade:${DATE}"]
 }
 
 target "gcc-git-source" {
@@ -19,7 +22,7 @@ target "gcc-git-source" {
     contexts = {
         baseimg = "target:base-upgrade"
     }
-    tags = ["cppdevenv-gcc-git-source:latest"]
+    tags = ["cppdevenv-gcc-git-source:latest", "cppdevenv-gcc-git-source:${DATE}"]
 }
 
 target "gcc-git-build" {
@@ -27,22 +30,19 @@ target "gcc-git-build" {
     contexts = {
         gccsrc = "target:gcc-git-source"
     }
-    tags = ["cppdevenv-gcc-git-build:latest"]
+    tags = ["cppdevenv-gcc-git-build:latest", "cppdevenv-gcc-git-build:${DATE}"]
 }
 
-target "gcc-git-rebuild" {
-    dockerfile = "Dockerfile.gcc-git-rebuild"
-    contexts = {
-        gccbld = "target:gcc-git-build"
-    }
-    tags = ["cppdevenv-gcc-git-build:latest"]
-}
 
 target "gcc-git" {
     dockerfile = "Dockerfile.gcc-git"
+    args = {
+        rebuild = "false"
+        cpu_threads = 6
+    }
     contexts = {
-        gccbld = "docker-image://cppdevenv-gcc-git-build:latest"
+        gccbld = "target:gcc-git-build"
         baseimg = "target:base-upgrade"
     }
-    tags = ["cppdevenv-gcc-git:latest"]
+    tags = ["cppdevenv-gcc-git:latest", "cppdevenv-gcc-git:${DATE}"]
 }
