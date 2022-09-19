@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:labs
+FROM gccbld
+ARG CPU_THREADS=6
+
+# update source
+WORKDIR /gcc-source
+RUN git pull
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get full-upgrade --yes
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get autoremove --yes
+
+# rebuild, allow make to reuse components
+WORKDIR /gcc-build-native
+
+RUN /gcc-source/configure \
+        --enable-languages=c,c++ \
+        --disable-multilib \
+        --enable-libstdcxx-backtrace=yes \
+        --enable-lto \
+        --prefix=/opt/gcc-git
+
+RUN make -j${CPU_THREADS}
+
+# copy from /opt/gcc-git in final image
+RUN make install
+
+# FROM gcc-git-native AS gcc-build
+# COPY --from=gcc-build /opt/gcc-git ...
+
+WORKDIR /

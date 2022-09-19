@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:labs
+FROM cppdevenv-base-upgrade
+
+# TODO: install binutils build dependencies, and clone binutils repo
+
+# dependencies for binutils
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get install --yes \
+        g++ make gawk
+
+# clone binutils source code
+RUN git clone --branch master --single-branch  \
+    git://sourceware.org/git/binutils-gdb.git /binutils-gdb-source
+
+ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update
+
+ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get full-upgrade --yes
+
+ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get autoremote --yes
+
+ONBUILD WORKDIR /binutils-gdb-source
+
+ONBUILD RUN git pull
+
+ONBUILD WORKDIR /

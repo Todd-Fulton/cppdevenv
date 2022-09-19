@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:labs
+FROM ubuntu:rolling
+
+# install tools
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get install --yes \
+        git lsb-release wget software-properties-common gnupg \
+        cmake ninja-build openssh-server gdb pkg-config systemd-coredump \
+        valgrind
+

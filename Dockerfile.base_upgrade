@@ -1,0 +1,7 @@
+# syntax=docker/dockerfile:labs
+FROM baseimg
+
+ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update && \
+    apt-get full-upgrade --yes && \
+    apt-get autoremove --yes

@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:labs
+ARG TARGET_LIBC_VERSION=2.35
+FROM edgexcase/cppdevenv_base:latest
+
+
+LABEL "target.libc.version"="${TARGET_LIBC_VERSION}"
+
+# TODO: fetch libc source
