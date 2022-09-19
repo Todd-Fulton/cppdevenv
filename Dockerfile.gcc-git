@@ -5,22 +5,30 @@ ARG cpu_threads=6
 
 # update source if REBUILD
 WORKDIR /gcc-source
-RUN DEBIAN_FRONTEND=noninteractive [ ${rebuild} = true ] && \
-    git pull && \
-    apt-get update && \
-    apt-get full-upgrade --yes
+RUN <<-EOF
+  if /bin/test ${rebuild} = true
+  then
+    git pull
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get full-upgrade --yes
+  fi
+EOF
 
 # rebuild if REBUILD
 WORKDIR /gcc-build-native
-RUN [ ${rebuild} = true ] && \
-    make distclean && \
+RUN <<-EOF
+  if /bin/test ${rebuild} = true
+  then
+    make distclean
     /gcc-source/configure \
         --enable-languages=c,c++ \
         --disable-multilib \
         --enable-libstdcxx-backtrace=yes \
         --enable-lto \
-        --prefix=/opt/gcc-git && \
+        --prefix=/opt/gcc-git
     make -j${cpu_threads}
+  fi
+EOF
 
 # install result
 WORKDIR /gcc-build-native
@@ -47,3 +55,4 @@ RUN DEBIAN_FRONTEND=noninteractive \
     apt-get autoremove --yes && \
     apt-get autoclean --yes && \
     rm -rf /var/lib/apt/lists/*
+
