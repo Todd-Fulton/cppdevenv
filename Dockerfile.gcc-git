@@ -74,3 +74,4 @@ RUN <<-EOF
     rm -rf /var/lib/apt/lists/*
 EOF
 
+WORKDIR /root

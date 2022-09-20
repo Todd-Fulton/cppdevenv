@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:labs
-FROM cppdevenv-base-upgrade
+FROM baseimg
 
 # dependencies for binutils
 RUN DEBIAN_FRONTEND=noninteractive \
@@ -10,15 +10,3 @@ RUN DEBIAN_FRONTEND=noninteractive \
 RUN git clone --branch master --single-branch  \
     git://sourceware.org/git/binutils-gdb.git /binutils-gdb-source
 
-ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get update && \
-    apt-get full-upgrade --yes && \
-    apt-get autoremove --yes && \
-    apt-get autoclean --yes && \
-    rm -rf /var/lib/apt/lists/*
-
-ONBUILD WORKDIR /binutils-gdb-source
-
-ONBUILD RUN git pull
-
-ONBUILD WORKDIR /

@@ -33,6 +33,14 @@ target "base-upgrade" {
     tags = ["cppdevenv-base-upgrade:latest", "cppdevenv-base-upgrade:${DATE}"]
 }
 
+target "binutils-git-source" {
+    dockerfile = "Dockerfile.binutils-git-source"
+    contexts = {
+        baseimg = "target:base-upgrade"
+    }
+    tags = ["cppdevenv-binutils-git-source:latest", "cppdevenv-binutils-git-source:${DATE}"]
+}
+
 target "gcc-git-source" {
     dockerfile = "Dockerfile.gcc-git-source"
     contexts = {
