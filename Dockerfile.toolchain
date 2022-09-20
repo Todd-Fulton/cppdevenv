@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:labs
+FROM cppdevenv-binutils-git AS binutils
+ARG cpu_threads=4
+ARG kernel_ver
+ARG glibc_ver
+ARG target_arch
+ARG os_name=linux-gnu
+ARG target_triplet=${target_arch}-${os_name}
+
+RUN mkdir -p /opt/${target_triplet}
+
+RUN mkdir -p /binutils-build-${target_triplet}
+
+WORKDIR /binutils-build-${target_triplet}
+
+RUN /binutils-gdb-git/configure \
+    --prefix=/opt/${target_triplet} \
+    --target=${target_triplet} \
+    --disable-multilib
+
+RUN make -j${cpu_threads}
+RUN make install
+
+WORKDIR /
+
+# TODO: fetch kernel src install headers
+
+FROM cppdevenv-gcc-git-update AS gcc
+ARG CPU_THREADS
+COPY --from=binutils /opt/gcc-git-linux-aarch64 /opt/gcc-git-linux-aarch64
+
+# build cross-compilers
+RUN mkdir -p /gcc-build-${target_triplet}
+WORKDIR /gcc-build-${target_triplet}
+
+RUN /gcc-source/configure \
+    --prefix=/opt/${target_triplet} \
+    --target=${target_triplet} \
+    --enable-languages=c,c++ \
+    --disable-multilib \
+    --enable-lto
+
+RUN make -j${cpu_threads} all-gcc
+RUN make install-gcc
+
+WORKDIR /
+
