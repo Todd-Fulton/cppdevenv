@@ -4,7 +4,7 @@ FROM baseimg
 # dependencies for gcc
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install --yes \
-        m4 flex bison build-essential file make \
+        m4 flex bison build-essential file make g++ \
         libgmp-dev \
         libmpfr-dev \
         libmpc-dev \
@@ -14,15 +14,3 @@ RUN DEBIAN_FRONTEND=noninteractive \
 # clone gcc source code
 RUN git clone --branch master --single-branch git://gcc.gnu.org/git/gcc.git /gcc-source
 
-ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get update
-
-ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get full-upgrade --yes
-
-ONBUILD RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get autoremove --yes
-
-ONBUILD WORKDIR /gcc-source
-ONBUILD RUN git pull
-ONBUILD WORKDIR /

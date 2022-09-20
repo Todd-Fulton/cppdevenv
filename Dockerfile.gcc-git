@@ -1,25 +1,29 @@
 # syntax=docker/dockerfile:labs
-FROM gccbld AS gcc-build
-ARG rebuild=false
-ARG cpu_threads=6
+FROM gccsrc as source
 
 # update source if REBUILD
 WORKDIR /gcc-source
+# timestamp to force git pull
+ARG timestamp
 RUN <<-EOF
-  if /bin/test ${rebuild} = true
-  then
-    git pull
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get full-upgrade --yes
-  fi
+    git pull
 EOF
 
-# rebuild if REBUILD
-WORKDIR /gcc-build-native
+
+FROM source AS builder
+# timestamp to force rebuild
+ARG timestamp
+ARG cpu_threads=6
+ARG cflags
+ARG cxxflags
 RUN <<-EOF
-  if /bin/test ${rebuild} = true
-  then
-    make distclean
+    mkdir /opt/gcc-git
+    mkdir /gcc-build-native
+    cd /gcc-build-native
+    export CFLAGS="${cflags}"
+    export CXXFLAGS="${cxxflags}"
     /gcc-source/configure \
         --enable-languages=c,c++ \
         --disable-multilib \
@@ -27,32 +31,46 @@ RUN <<-EOF
         --enable-lto \
         --prefix=/opt/gcc-git
     make -j${cpu_threads}
-  fi
+    make install
+    unset CFLAGS
+    unset CXXFLAGS
 EOF
 
-# install result
-WORKDIR /gcc-build-native
-RUN make install
-
-FROM baseimg AS base
+FROM baseimg AS copier
 # copy from /opt/gcc-git in final image
-COPY --from=gcc-build /opt/gcc-git /opt/gcc-git
+RUN mkdir /opt/gcc-git
+# timestamp to force recopy
+ARG timestamp
+COPY --from=builder /opt/gcc-git /opt/gcc-git
 
-# install deps for gcc
-RUN DEBIAN_FRONTEND=noninteractive \
+RUN <<-EOF
+  DEBIAN_FRONTEND=noninteractive \
+    apt-get install --yes file binutils
+  # Strip binaries
+  find /opt/gcc-git -not -type d -executable | \
+	xargs file | \
+	grep ELF | \
+	cut -d: -f 1 | \
+	xargs strip
+EOF
+
+
+FROM copier AS finalizer
+WORKDIR /opt/gcc-git
+RUN <<-EOF
+  # install deps for gcc
+  DEBIAN_FRONTEND=noninteractive \
     apt-get install --yes \
     libgmp10 \
     libmpfr6 \
     libmpc3 \
     libisl23 \
     libzstd1 \
-    libc-dev-bin libc-devtools libc6-dev \
-    # TODO: should we compile binutils from source???
-    binutils
-
-RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get remove gcc --yes && \
+    libc-dev-bin libc-devtools libc6-dev
+  DEBIAN_FRONTEND=noninteractive \
+    apt-get remove gcc file --yes && \
     apt-get autoremove --yes && \
     apt-get autoclean --yes && \
     rm -rf /var/lib/apt/lists/*
+EOF
 
