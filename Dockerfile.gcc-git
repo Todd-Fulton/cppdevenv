@@ -3,18 +3,19 @@ FROM gccsrc as source
 
 # update source if REBUILD
 WORKDIR /gcc-source
-# timestamp to force git pull
-ARG timestamp
+# git: checkout a specific commit
+ARG gitcommit=master
 RUN <<-EOF
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get full-upgrade --yes
     git pull
+    git checkout ${gitcommit}
 EOF
 
 
 FROM source AS builder
-# timestamp to force rebuild
-ARG timestamp
+# gitcommit to force rebuild
+ARG gitcommit=master
 ARG cpu_threads=6
 ARG cflags
 ARG cxxflags
@@ -39,8 +40,8 @@ EOF
 FROM baseimg AS copier
 # copy from /opt/gcc-git in final image
 RUN mkdir /opt/gcc-git
-# timestamp to force recopy
-ARG timestamp
+# gitcommit to force recopy
+ARG gitcommit=master
 COPY --from=builder /opt/gcc-git /opt/gcc-git
 
 RUN <<-EOF
@@ -74,4 +75,5 @@ RUN <<-EOF
     rm -rf /var/lib/apt/lists/*
 EOF
 
-WORKDIR /root
+WORKDIR /
+

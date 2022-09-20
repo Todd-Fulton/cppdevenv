@@ -1,5 +1,6 @@
 ## TODO:
-  [x] Minimize image sizes - strip binaries, don't use build only deps.
+  [x] Minimize image sizes - strip binaries, don't use build only deps. Use docker-squash.
+  [ ] Use git commit tags instead of timestamps
   [ ] Make toolchain build process generic, use variables for target-arch & versions.
   [ ] Add toolchain files for cmake.
   [ ] Add a base project for cmake.

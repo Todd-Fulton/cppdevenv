@@ -16,10 +16,6 @@ variable CPU_THREADS {
   default = 4
 }
 
-variable GIT_PULL {
-  default = false
-}
-
 target "base" {
     dockerfile = "Dockerfile.base"
     tags = ["cppdevenv-base:latest", "cppdevenv-base:${DATE}"]
@@ -52,7 +48,7 @@ target "gcc-git-source" {
 target "gcc-git" {
     dockerfile = "Dockerfile.gcc-git"
     args = {
-        timestamp = "${timestamp()}"
+        gitcommit = "d812e8cb2a920fd75768e16ca8ded59ad93c172f"
         cpu_threads = "${CPU_THREADS}"
         cflags = "${CFLAGS}"
         cxxflags = "${CXXFLAGS}"
@@ -63,3 +59,4 @@ target "gcc-git" {
     }
     tags = ["cppdevenv-gcc-git:latest", "cppdevenv-gcc-git:${DATE}"]
 }
+
