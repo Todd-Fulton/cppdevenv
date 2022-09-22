@@ -148,15 +148,13 @@ RUN --mount=type=cache,ro=true,target=/source \
     --with-mpfr=${PREFIX} \
     --with-mpc=${PREFIX} \
     --with-isl=${PREFIX} \
-    --disable-multilib \
+    --enable-multilib \
     --disable-werror ${binutils_extra_config} \
   && make -j${cpu_threads} \
   && make install \
   && cd / \
   && rm -rf /binutils*
 
-
-ARG INCLUDE_DIR="${PREFIX}/${target_triplet}/include"
 
 # make kernel headers
 ARG kernel_arch
@@ -178,6 +176,7 @@ RUN --mount=type=cache,ro=true,target=/source \
       --build=${MACHTYPE} \
       --host=${MACHTYPE} \
       --with-sysroot=${SYSROOT} \
+      --with-native-system-header-dir=/usr/include \
       --without-headers \
       --with-newlib \
       --disable-shared \
@@ -196,18 +195,16 @@ RUN --mount=type=cache,ro=true,target=/source \
       --with-mpfr=${PREFIX} \
       --with-mpc=${PREFIX} \
       --with-isl=${PREFIX} \
+      --enable-multilib \
       --enable-languages=c \
       --enable-checking=release \
-      --disable-multilib \
       --disable-werror \
   && make -j${cpu_threads} all-gcc all-target-libgcc \
   && make install-gcc install-target-libgcc \
   && cd / \
   && rm -rf gcc-build
 
-
-
-# make glibc 
+# make glibc bit
 # see https://sourceware.org/bugzilla/show_bug.cgi?id=24183
 # NOTE: need install_root=$SYSROOT so that libc.so linker script has
 # correct paths.
@@ -221,12 +218,13 @@ RUN --mount=type=cache,ro=true,target=/source \
      CXX=${target_triplet}-g++ \
      AR="${target_triplet}-ar" RANLIB="${target_triplet}-ranlib" \
     /source/glibc/configure \
-      --prefix=/usr \
       --host=${target_triplet} \
       --build=${MACHTYPE} \
+      --prefix=/usr \
+      --libdir=/usr/lib64 \
       --with-headers=${SYSROOT}/usr/include \
-      --enable-kernel=$(echo ${kernel_version} | cut -d- -f1) \
       --with-binutils=${PREFIX}/bin \
+      --enable-kernel=$(echo ${kernel_version} | cut -d- -f1) \
       --enable-shared \
       --disable-profile \
       --disable-werror ${glibc_extra_config} \
@@ -234,24 +232,26 @@ RUN --mount=type=cache,ro=true,target=/source \
   && make install install_root=${SYSROOT} \
   && mkdir -p ${SYSROOT}/usr/lib \
   && ( ( /usr/bin/test -d ${SYSROOT}/lib \
-         && cp -a ${SYSROOT}/lib/* ${SYSROOT}/usr/lib/ \
-         && rm -rf ${SYSROOT}/lib \
-         && ln -s usr/lib ${SYSROOT}/lib ) \
-     || ln -s usr/lib ${SYSROOT}/lib ) \
+         && cp -a ${SYSROOT}/lib/* ${SYSROOT}/usr/lib64 \
+         && rm -rf ${SYSROOT}/lib ) || true ) \
   && ( ( /usr/bin/test -d ${SYSROOT}/lib64 \
-         && cp -a ${SYSROOT}/lib64/* ${SYSROOT}/usr/lib/  \
-         && rm -rf ${SYSROOT}/lib64 \
-         && ln -s usr/lib ${SYSROOT}/lib64 ) \
-     || ln -s usr/lib ${SYSROOT}/lib64 ) \
-  && ( ( /usr/bin/test -d ${SYSROOT}//usr/lib64 \
-         && cp -a ${SYSROOT}/usr/lib64/* ${SYSROOT}/usr/lib/  \
-         && rm -rf ${SYSROOT}/usr/lib64 \
-         && ln -s lib ${SYSROOT}/usr/lib64 ) \
-     || ln -s lib ${SYSROOT}/usr/lib64 ) \
+         && cp -a ${SYSROOT}/lib64/* ${SYSROOT}/usr/lib64 \
+         && rm -rf ${SYSROOT}/lib64 ) || true ) \
+  && ( ( /usr/bin/test -d ${SYSROOT}/usr/lib \
+         && cp -a ${SYSROOT}/usr/lib/* ${SYSROOT}/usr/lib64 \
+         && rm -rf ${SYSROOT}/usr/lib ) || true ) \
+  && ln -s usr/lib64 ${SYSROOT}/lib \
+  && ln -s usr/lib64 ${SYSROOT}/lib64 \
+  && ln -s lib64 ${SYSROOT}/usr/lib \
   && cd ${PREFIX}/${target_triplet} \
-  && mv lib/* ${SYSROOT}/usr/lib/ \
-  && rm -r lib \
-  && ln -s ${SYSROOT}/usr/lib* \
+  && ( ( /usr/bin/test -d lib \
+         && cp -a lib/* ${SYSROOT}/usr/lib64/ \
+         && rm -r lib ) || true ) \
+  && ( ( /usr/bin/test -d lib \
+         && cp -a lib64/* ${SYSROOT}/usr/lib64/ \
+         && rm -r lib64 ) || true ) \
+  && ln -s ${SYSROOT}/usr/lib64 lib \
+  && ln -s ${SYSROOT}/usr/lib64 lib64 \
   && cd / \
   && rm -rf /glibc*
 
@@ -267,26 +267,30 @@ RUN --mount=type=cache,ro=true,target=/source \
           --host=${MACHTYPE} \
           --build=${MACHTYPE} \
           --with-sysroot=${SYSROOT} \
+          --with-native-system-header-dir=/usr/include \
           --enable-languages=c,c++ \
           --enable-threads=posix \
-          --enable-tls \
           --with-mpc=${PREFIX} \
           --with-mpfr=${PREFIX} \
           --with-gmp=${PREFIX} \
           --with-isl=${PREFIX} \
-          --disable-multilib \
+          --enable-multilib \
           --enable-checking=release \
           ${gcc_extra_config} \
   && make AS_FOR_TARGET=${target_triplet}-as \
           LD_FOR_TARGET=${target_triplet}-ld \
           -j${cpu_threads} \
   && make install \
+  && cd ${PREFIX}/${target_triplet} \
+  && cp -a include/* ${SYSROOT}/usr/include \
+  && rm -rf include \
   && cd / \
   && rm -rf /gcc*
 
 ## clean up
 RUN \
   cd / \
+  && ln -s ${SYSROOT}/usr/include ${PREFIX}/${target_triplet}/include \
   && ((find $PREFIX -not -type d -executable \
         | xargs file \
         | grep ELF \
