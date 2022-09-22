@@ -49,6 +49,16 @@ RUN \
   && cd /
 
 
+# setup sysroot
+RUN \
+  mkdir -p ${SYSROOT}/usr/{lib,bin} \
+  && ln -s usr/lib $SYSROOT/lib \
+  && ln -s usr/lib $SYSROOT/lib64 \
+  && ln -s usr/bin $SYSROOT/bin \
+  && ln -s usr/bin $SYSROOT/sbin \
+  && ln -s bin $SYSROOT/usr/sbin \
+  && ln -s lib $SYSROOT/usr/lib64
+
 # make gmp
 RUN \
   mkdir /gmp-build \
@@ -107,13 +117,6 @@ RUN \
   cd /binutils-gdb \
   && git pull \
   && git checkout ${binutils_commit} \
-  && mkdir -p ${SYSROOT}/usr/{lib,bin} \
-  && ln -s usr/lib $SYSROOT/lib \
-  && ln -s usr/lib64 $SYSROOT/lib \
-  && ln -s usr/bin $SYSROOT/bin \
-  && ln -s usr/sbin $SYSROOT/sbin \
-  && ln -s bin $SYSROOT/usr/sbin \
-  && ln -s lib $SYSROOT/usr/lib64 \
   && mkdir -p /binutils-build \
   && cd /binutils-build \
   && /binutils-gdb/configure \
