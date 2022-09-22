@@ -24,37 +24,45 @@ Reasons to use this over internal package managers (e.g. apt, apk, yum):
     - All the reasons people use Aur on Arch Linux distrobutions.
 
 Example usage:
-    ```sh
-    python build.py --toolchain=$CUSTOM_TOOLCHAIN \
-            build_image --packages=package1,package2,packageY
-    ```
+```sh
+python build.py --toolchain=$CUSTOM_TOOLCHAIN \
+        build_image --packages=package1,package2,packageY
+```
 
-    The tool will use configuration files stored in json to build each
-    package. In the previous example, packageY depends on packageX, packageX
-    will be built as well.
+The tool will use configuration files stored in json to build each
+package. In the previous example, packageY depends on packageX, packageX
+will be built as well.
 
-    For development environments...
+For development environments...
 
-    ```sh
-    python build.py --toolchain=$CUSTOM_TOOLCHAIN \
-            build_dev_image --packages=package1,package2,packageY
-    ```
+```sh
+python build.py --toolchain=$CUSTOM_TOOLCHAIN \
+        build_dev_image --packages=package1,package2,packageY
+```
 
-    The tool will leave the toolchain and headers installed for development.
+The tool will leave the toolchain and headers installed for development.
 
-    Using a configuration file for complicated or lengthy requirements...
+Using a configuration file for complicated or lengthy requirements...
 
-    ```sh
-    python build.py build_[dev_]image --config=CONFIG.json
-    ```
+```sh
+python build.py build_[dev_]image --config=CONFIG.json
+```
 
-    Building a custom toolchain...
-    ```sh
-    python build.py build_toolchain --config=CONFIG.json
-    ```
-    """
+Building a custom toolchain...
+```sh
+python build.py build_toolchain --config=CONFIG.json
+```
+"""
+
 
 import json
+
+"""
+TODO:
+    Will need a cycle detector. Will need a way to handle cycles, or stop,
+    for example, gcc and glibc often depend on eachother, but we can handle
+    that.
+"""
 
 
 class configuration_option:
@@ -119,7 +127,10 @@ class project:
 
         @property
         def dependencies(self) -> set:
-            """Set of build, runtime, and development dependecies."""
+            """Set of build, runtime, and development dependecies.
+
+            Use depth first search to build all dependencies in proper order.
+            """
             return (
                 self.build_dependencies
                 | self.runtime_dependencies
@@ -205,6 +216,22 @@ class make_project(project):
 
         def __str__(self):
             return " ".join([str(v) for v in _confopt])
+
+
+class Dockerfile:
+    """Represents a Dockerfile.
+
+    Once the project has been configured and composed, a Dockerfile can
+    be created from it, composed into a string, and piped into `docker build`.
+    """
+
+    def __init__(self, proj):
+        """Build up a docker file."""
+        pass
+
+    def __str__(self) -> str:
+        """Compose the dockerfile into a string."""
+        pass
 
 
 if __name__ == "__main__":

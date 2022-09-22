@@ -16,47 +16,32 @@ variable CPU_THREADS {
   default = 4
 }
 
+variable TARGET_TRIPLET {
+  default = "x86_64-linux-gnu"
+}
+
+variable KERNEL_ARCH {
+  default = "x86_64"
+}
+
 target "base" {
     dockerfile = "Dockerfile.base"
     tags = ["cppdevenv-base:latest", "cppdevenv-base:${DATE}"]
 }
 
-target "base-upgrade" {
-    dockerfile = "Dockerfile.base_upgrade"
-    contexts = {
-        baseimg = "target:base"
-    }
-    tags = ["cppdevenv-base-upgrade:latest", "cppdevenv-base-upgrade:${DATE}"]
-}
-
-target "binutils-git-source" {
-    dockerfile = "Dockerfile.binutils-git-source"
-    contexts = {
-        baseimg = "target:base-upgrade"
-    }
-    tags = ["cppdevenv-binutils-git-source:latest", "cppdevenv-binutils-git-source:${DATE}"]
-}
-
-target "gcc-git-source" {
-    dockerfile = "Dockerfile.gcc-git-source"
-    contexts = {
-        baseimg = "target:base-upgrade"
-    }
-    tags = ["cppdevenv-gcc-git-source:latest", "cppdevenv-gcc-git-source:${DATE}"]
-}
-
-target "gcc-git" {
-    dockerfile = "Dockerfile.gcc-git"
+target "gnu-toolchain" {
+    dockerfile = "Dockerfile.gnu-toolchain"
     args = {
-        gitcommit = "d812e8cb2a920fd75768e16ca8ded59ad93c172f"
+        target_triplet = "${TARGET_TRIPLET}"
+        gcc_commit = "master"
+        binutils_commit = "master"
+        glibc_commit = "master"
+        kernel_version = "6.0-rc6"
+        kernel_arch = "${KERNEL_ARCH}"
         cpu_threads = "${CPU_THREADS}"
         cflags = "${CFLAGS}"
         cxxflags = "${CXXFLAGS}"
     }
-    contexts = {
-        gccsrc = "target:gcc-git-source"
-        baseimg = "target:base-upgrade"
-    }
-    tags = ["cppdevenv-gcc-git:latest", "cppdevenv-gcc-git:${DATE}"]
+    tags = ["cppdevenv-gnu-toolchain:${TARGET_TRIPLET}_latest", "cppdevenv-gnu-toolchain:${TARGET_TRIPLET}_${DATE}"]
 }
 

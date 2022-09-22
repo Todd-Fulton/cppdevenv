@@ -1,207 +1,279 @@
 # syntax=docker/dockerfile:labs
-FROM baseimg AS deps
-RUN <<-EOF
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive \
-    apt-get install --yes g++ make gawk wget
-  DEBIAN_FRONTEND=noninteractive \
-    apt-get autoremove --yes &&
-    apt-get autoclean --yes &&
-    rm -rf /var/lib/apt/lists/*
-EOF
-
-FROM deps as binutils-source
-RUN <<-EOF 
-  # clone binutils source code
-  git clone --branch master --single-branch  \
-      git://sourceware.org/git/binutils-gdb.git /binutils-gdb-source
-EOF
-
-FROM binutils-source AS binutils-build
+FROM ubuntu:rolling
 ARG cpu_threads=4
 ARG target_triplet
+ARG glibc_commit
 ARG binutils_commit
 ARG binutils_extra_config
-
-RUN <<-EOF
-  # update apt pkgs
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive \
-    apt-get full-upgrade --yes && \
-    apt-get autoremove --yes && \
-    apt-get autoclean --yes && \
-    rm -rf /var/lib/apt/lists/*
-  
-  # update binutils source, use proper commit
-  cd /binutils-gdb-source
-  git pull
-  git checkout ${binutils_commit}
-
-  # build and install binutils
-  mkdir -p /opt/${target_triplet}
-  mkdir -p /binutils-build
-  
-  cd /binutils-build
-  /binutils-gdb-git/configure \
-    --prefix=/opt/${target_triplet} \
-    --with-sysroot=/opt/${target_triplet}/${target_triplet} \
-    --target=${target_triplet} \
-    --disable-werror ${binutils_extra_config}
-  
-  make -j${cpu_threads}
-  make install
-  
-  cd /
-  rm -rf /binutils-gdb-source
-  rm -rf /binutils-build
-EOF
-
-# fetch kernel src install headers
-FROM deps AS kernel-headers
-ARG kernel_version
-ARG kernel_arch
-ARG target_triplet
-RUN <<-EOF
-  mkdir -p /opt/${target_triplet}/${target_triplet}
-  wget https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/snapshot/linux-${kernel_version}.tar.gz -O - | tar xzf -
-  cd linux-${kernel_version}
-  make ARCH=${kernel_arch} \
-      INSTALL_HDR_PATH=/opt/${target_triplet}/${target_triplet}/usr \
-      headers_install
-  cd /
-  rm -rf /linux-${kernel_version}*
-EOF
-
-# glibc headers
-FROM glibc-source AS glibc-headers
-ARG glibc_commit
-ARG target_triplet
-
-RUN <<-EOF
-  # checkout glibc_commit
-  cd /glibc-source
-  git pull
-  git checkout ${glibc_commit}
-
-  # install glibc headers
-  mkdir /glibc-build
-  cd /glibc-build
-  export PATH=/opt/${target_triplet}/bin:$PATH
-  SYSROOT=/opt/${target_triplet}/${target_triplet}
-  /glibc-source/configure \
-      --host=${target_triplet} \
-      --target=${target_triplet} \
-      --build=$MACHTYPE \
-      --prefix=$SYSROOT \
-      --includedir=$SYSROOT/usr/include \
-      --with-headers=$SYSROOT/usr/include ${glibc_extra_config}
-  
-  make -k install-bootstrap-headers=yes install-headers
-  
-  # glibc needs some manual labor
-  mkdir -p $SYSROOT/usr/include/gnu
-  touch $SYSROOT/usr/include/gnu/stub.h
-  cp bits/stdio_lib.h $SYSROOT/usr/include/bits/
-  cd /  
-EOF
-
-# clone gcc repo
-FROM deps AS gcc-source
+ARG gcc_commit
 ARG gmp_version=6.2.1
 ARG mpfr_version=4.1.0
 ARG mpc_version=1.2.1
-ARG isl_version=0.25
+ARG isl_version=0.24
+ARG kernel_version
+ARG kernel_arch
+ARG target_triplet
+ARG PREFIX=/opt/${target_triplet}
+ARG SYSROOT=${PREFIX}/${target_triplet}
+ENV PATH=${PREFIX}/bin:${PATH}
 
-RUN <<-
-  # dependencies for gcc
+# dependencies and sources
+RUN \
   DEBIAN_FRONTEND=noninteractive \
-    apt-get install --yes \
-        m4 flex bison build-essential file make g++ \
-        libzstd-dev
+  apt-get update \
+  && apt-get install --yes \
+        git \
+        g++ \
+        make \
+        gawk \
+        wget \
+        rsync \
+        m4 \
+        flex \
+        bison \
+        build-essential \
+        file \
+        python3 \
+        texinfo \
+        libzstd-dev \
+        pkg-config \
+  && cd / \
+  && git clone --branch master --single-branch git://sourceware.org/git/binutils-gdb.git \
+  && git clone --branch master --single-branch git://gcc.gnu.org/git/gcc.git \
+  && git clone https://sourceware.org/git/glibc.git \
+  && wget https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/snapshot/linux-${kernel_version}.tar.gz -O - | tar xzf - \
+  && wget https://gnu.mirror.constant.com/gmp/gmp-${gmp_version}.tar.xz -O - | tar xvJf - \
+  && wget https://gnu.mirror.constant.com/mpfr/mpfr-${mpfr_version}.tar.xz -O - | tar xvJf - \
+  && wget https://gnu.mirror.constant.com/mpc/mpc-${mpc_version}.tar.gz -O - | tar xvzf - \
+  && wget https://libisl.sourceforge.io/isl-${isl_version}.tar.xz -O - | tar xvJf - \
+  && cd /
 
-  # clone gcc source code
-  git clone --branch master --single-branch git://gcc.gnu.org/git/gcc.git /gcc-source
-  
-  cd /
-  # use release archives of dependencies
-  wget https://gnu.mirror.constant.com/gmp/gmp-${gmp_version}.tar.xz -O - | tar xvJf -
-  wget https://gnu.mirror.constant.com/mpfr/mpfr-${mpfr_version}.tar.xz -O - | tar xvJf -
-  wget https://gnu.mirror.constant.com/mpc/mpc-${mpc_version}.tar.gz -O - | tar xvzf -
-  wget https://libisl.sourceforge.io/isl-${isl_version}.tar.xz -O - | tar xvJf -
-  
-  cd /gcc-source
-  ln -s /gmp-${gmp_version} gmp
-  ln -s /mpfr-${mpfr_version} mpfr
-  ln -s /mpc-${mpc_version} mpc
-  ln -s /isl-${isl_version} isl
-  cd /
-EOF
 
-# build stage 1 gcc
-FROM gcc-source AS gcc-build-stage1
-ARG target_triplet
+# make gmp
+RUN \
+  mkdir /gmp-build \
+  && cd /gmp-build \
+  && ../gmp-${gmp_version}/configure \
+        --prefix=$PREFIX \
+        --enable-cxx \
+        --disable-static \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd /
 
-COPY --from=binutils /opt/${target_triplet} /opt
-COPY --from=kernel-headers /opt/${target_triplet} /opt
-COPY --from=glibc-headers /opt/${target_triplet} /opt
+# make mpfr
+RUN \
+  mkdir /mpfr-build \
+  && cd /mpfr-build \
+  && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+      ../mpfr-${mpfr_version}/configure \
+        --prefix=${PREFIX} \
+        --with-gmp=${PREFIX} \
+        --disable-static \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd /
 
-# gcc_commit after COPY to allow caching those layers
-ARG gcc_commit
-ARG cpu_threads
+# make mpc
+RUN \
+  mkdir /mpc-build \
+  && cd /mpc-build \
+  && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+     ../mpc-${mpc_version}/configure \
+       --prefix=${PREFIX} \
+       --with-gmp=${PREFIX} \
+       --with-mpfr=${PREFIX} \
+        --disable-static \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd /
 
-RUN <<-EOF
-  cd /gcc-source
-  git pull
-  git checkout ${gcc_commit}
-  
-  mkdir -p /gcc-build
-  cd /gcc-build
-  export PATH=/opt/${target_triplet}/bin
-  SYSROOT=/opt/${target_triplet}/${target_triplet}
-  /gcc-source/configure \
+# make isl
+RUN \
+  mkdir /isl-build \
+  && cd /isl-build \
+  && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+      ../isl-${isl_version}/configure \
+        --prefix=${PREFIX} \
+        --with-gmp-prefix=${PREFIX} \
+        --disable-static \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd /
+
+# make binutils
+RUN \
+  cd /binutils-gdb \
+  && git pull \
+  && git checkout ${binutils_commit} \
+  && mkdir -p /binutils-build \
+  && cd /binutils-build \
+  && /binutils-gdb/configure \
+    --prefix=${PREFIX} \
+    --host=${MACHTYPE} \
+    --target=${target_triplet} \
+    --with-sysroot=${SYSROOT} \
+    --with-libpath=${SYSROOT}/lib \
+    --with-gmp=${PREFIX} \
+    --with-mpfr=${PREFIX} \
+    --with-mpc=${PREFIX} \
+    --with-isl=${PREFIX} \
+    --enable-64-bit-bfd \
+    --disable-multilib \
+    --disable-werror ${binutils_extra_config} \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd / \
+  && rm -rf /binutils*
+
+# make kernel headers
+RUN \
+  mkdir -p /opt/${target_triplet}/${target_triplet} \
+  && cd linux-${kernel_version} \
+  && make ARCH=${kernel_arch} \
+      INSTALL_HDR_PATH=/opt/${target_triplet}/${target_triplet}/usr \
+      headers_install \
+  && cd / \
+  && rm -rf /linux-${kernel_version}*
+
+# make static-gcc
+RUN \
+  cd /gcc \
+  && git pull \
+  && git checkout ${gcc_commit} \
+  && touch ${SYSROOT}/usr/include/limits.h \
+  && mkdir -p /gcc-build \
+  && cd /gcc-build \
+  && AR=ar LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+    /gcc/configure \
+      --prefix=${PREFIX} \
       --target=${target_triplet} \
-      --prefix=/opt/${target_triplet} \
+      --build=${MACHTYPE} \
+      --host=${MACHTYPE} \
       --with-sysroot=$SYSROOT \
-      --with-headers=$SYSROOT/usr/include \
-      --enable-languages=c,c++ \
-      --enable-lto \
+      --with-local-prefix=${SYSROOT} \
+      --with-native-system-header-dir=${SYSROOT}/usr/include \
+      --without-headers \
+      --disable-shared \
+      --with-newlib \
+      --disable-decimal-float \
+      --disable-libgomp \
+      --disable-libmudflap \
+      --disable-libssp \
+      --disable-libatomic \
+      --disable-libitm \
+      --disable-libsanitizer \
+      --disable-libquadmath \
+      --disable-threads \
+      #--disable-target-zlib \
+      #--with-system-zlib \
+      --with-gmp=${PREFIX} \
+      --with-mpfr=${PREFIX} \
+      --with-mpc=${PREFIX} \
+      --with-isl=${PREFIX} \
+      --enable-languages=c \
+      --enable-checking=release \
+      --disable-multilib \
       --disable-werror \
-      ${gcc_extra_config}
+  && make -j${cpu_threads} all-gcc all-target-libgcc \
+  && make install-gcc install-target-libgcc \
+  && cd /
 
-  make -j${cpu_threads} all-gcc
-  make install-gcc
-  cd /
-EOF
-
-# glibc source
-FROM deps AS glibc-source
-RUN <<-EOF
-  git clone https://sourceware.org/git/glibc.git /glibc-source
-EOF
-
-FROM glibc-headers AS glibc-build
-ARG target_triplet
-ARG cpu_threads=4
-
-COPY --from gcc-build-stage1 /opt/${target_triplet} /opt
-# TODO: make sure the start files are correct for different architectures
-RUN <<-EOF
-  export PATH=/opt/${target_triplet}/bin:$PATH
-  cd /glibc-build
-  make -j${cpu_threads} csu/subdir_lib
-  install csu/crt1.o csu/crti.o csu/crtn.o /opt/${target_triplet}/${target_triplet}/lib
-  ${target_triplet}-gcc \
-        -nostdlib \
-        -nostartfiles \
-        -shared \
-        -x c /dev/null \
-        -o /opt/${target_triplet}/lib/libc.so
-EOF
+# see https://sourceware.org/bugzilla/show_bug.cgi?id=24183
+# make glibc 
+RUN \
+  cd / \
+  && cd /glibc \
+  && git pull \
+  && git checkout ${glibc_commit} \
+  && mkdir /glibc-build \
+  && cd /glibc-build \
+  && BUILD_CC="gcc" CC="${target_triplet}-gcc" \
+     CXX=${target_triplet}-g++ \
+     AR="${target_triplet}-ar" RANLIB="${target_triplet}-ranlib" \
+   /glibc/configure \
+      --prefix=${SYSROOT} \
+      --host=${target_triplet} \
+      --build=$MACHTYPE \
+      --enable-kernel=$(echo ${kernel_version} | cut -d- -f1) \
+      --libdir=${SYSROOT}/lib \
+      --includedir=$SYSROOT/usr/include \
+      --with-headers=$SYSROOT/usr/include \
+      --with-binutils=${PREFIX}/bin \
+      --enable-obsolete-rpc \
+      --disable-profile \
+      --disable-werror ${glibc_extra_config} \
+  && make -j${cpu_threads} \
+  && make install \
+  && cd /
 
 
-# TODO: make libgcc
+# TODO: Add gcc_extra_config
+## make final compiler
+RUN \
+  cd /gcc-build \
+  && make distclean \
+  && AR=ar LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+      /gcc/configure \
+          --prefix=${PREFIX} \
+          --target=${target_triplet} \
+          --host=${MACHTYPE} \
+          --build=${MACHTYPE} \
+          --with-sysroot=${SYSROOT} \
+          --with-local-prefix=${SYSROOT} \
+          --with-headers=$SYSROOT/usr/include \
+          --with-native-system-header-dir=/usr/include \
+          --disable-static \
+          --enable-languages=c,c++ \
+          --enable-threads=posix \
+          --with-mpc=${PREFIX} \
+          --with-mpfr=${PREFIX} \
+          --with-gmp=${PREFIX} \
+          --with-isl=${PREFIX} \
+          #--with-system-zlib \
+          --disable-multilib \
+          --enable-checking=release \
+          --enable-libstdcxx-time \
+          ${gcc_extra_config} \
+  && make AS_FOR_TARGET=${target_triplet}-as \
+          LD_FOR_TARGET=${target_triplet}-ld \
+          -j${cpu_threads} \
+  && make install
 
-# TODO: finish glibc
-
-# TODO: finish gcc toolchain
+## clean up
+RUN \
+  cd / \
+  && rm -rf \
+        /gcc* \
+        /binutils* \
+        /glibc* \
+        /isl* \
+        /gmp* \
+        /mpc* \
+        /mpfr* \
+        /linux-* \
+  && ((find $PREFIX -not -type d -executable \
+        | xargs file \
+        | grep ELF \
+        | grep -v "LSB shared object" \
+        | grep -v "SYSV" \
+        | cut -d: -f1 \
+        | xargs strip 2>/dev/null) || true) \
+  && apt-get remove --yes \
+        git \
+        g++ \
+        make \
+        gawk \
+        wget \
+        rsync \
+        m4 \
+        flex \
+        bison \
+        build-essential \
+        file \
+        texinfo \
+        python3 \
+  && apt-get autoremove --yes \
+  && apt-get autoclean --yes \
+  && rm -rf /var/lib/apt/lists/*
 
