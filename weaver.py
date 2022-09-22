@@ -79,6 +79,9 @@ class configuration_option:
         - documentation
 
     To enable options, a project depends on the option, and its dependencies.
+        A -> x -> y
+        |--> w -> B -> i -> j -> C -> m
+        ...
     """
 
     pass
@@ -107,14 +110,7 @@ class project:
         self.version = pconfig["version"]
         self.maintainers = pconfig["maintainers"]
         self.conflicts_with = pconfig["conflicts_with"]
-        self._build_deps = pconfig["build_deps"]
-        self._dev_deps = pconfig["dev_deps"]
-        self._runtime_deps = pconfig["runtime_deps"]
-        self._config_options = pconfig["configuration_options"]
-        self._configure_steps = pconfig["configure_steps"]
-        self._build_steps = pconfig["build_steps"]
-        self._install_steps = pconfig["install_steps"]
-        self._clean_steps = pconfig["clean_steps"]
+        self._deps = pconfig["deps"]
 
         @property
         def _repository(self):

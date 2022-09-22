@@ -2,23 +2,24 @@
 FROM ubuntu:rolling
 ARG cpu_threads=4
 ARG target_triplet
-ARG glibc_commit
-ARG binutils_commit
-ARG binutils_extra_config
-ARG gcc_commit
+ARG kernel_version
 ARG gmp_version=6.2.1
 ARG mpfr_version=4.1.0
 ARG mpc_version=1.2.1
 ARG isl_version=0.25
-ARG kernel_version
-ARG kernel_arch
-ARG target_triplet
+ARG binutils_commit
 ARG PREFIX=/opt/${target_triplet}
-ARG SYSROOT=${PREFIX}/${target_triplet}
 ENV PATH=${PREFIX}/bin:${PATH}
 
-# dependencies and sources
 RUN \
+  rm -f /etc/apt/apt.conf.d/docker-clean \
+  && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+           > /etc/apt/apt.conf.d/keep-cache \
+  && mkdir -p ${PREFIX} \
+  mkdir -p /source 
+  
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/source \
   DEBIAN_FRONTEND=noninteractive \
   apt-get update \
   && apt-get install --yes \
@@ -37,89 +38,108 @@ RUN \
         texinfo \
         libzstd-dev \
         pkg-config \
-  && cd / \
-  && git clone --branch master --single-branch git://sourceware.org/git/binutils-gdb.git \
-  && git clone --branch master --single-branch git://gcc.gnu.org/git/gcc.git \
-  && git clone https://sourceware.org/git/glibc.git \
-  && wget https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/snapshot/linux-${kernel_version}.tar.gz -O - | tar xzf - \
-  && wget https://gnu.mirror.constant.com/gmp/gmp-${gmp_version}.tar.xz -O - | tar xvJf - \
-  && wget https://gnu.mirror.constant.com/mpfr/mpfr-${mpfr_version}.tar.xz -O - | tar xvJf - \
-  && wget https://gnu.mirror.constant.com/mpc/mpc-${mpc_version}.tar.gz -O - | tar xvzf - \
-  && wget https://libisl.sourceforge.io/isl-${isl_version}.tar.xz -O - | tar xvJf - \
+  && cd /source \
+  && ( /usr/bin/test -d gmp-${gmp_version} \
+       || wget -O - \
+            https://gnu.mirror.constant.com/gmp/gmp-${gmp_version}.tar.xz \
+          | tar xJf - ) \
+  && ( /usr/bin/test -d mpfr-${mpfr_version} \
+       || wget -O - \
+            https://gnu.mirror.constant.com/mpfr/mpfr-${mpfr_version}.tar.xz \
+          | tar xJf - ) \
+  && ( /usr/bin/test -d mpfr-${mpc_version} \
+       || wget -O - \
+            https://gnu.mirror.constant.com/mpc/mpc-${mpc_version}.tar.gz \
+          | tar xzf - ) \
+  && ( /usr/bin/test -d isl-${isl_version} \
+       || wget -O - \
+            https://libisl.sourceforge.io/isl-${isl_version}.tar.xz \
+          | tar xJf - ) \
+  && ( /usr/bin/test -d linux-${kernel_version} \
+       || wget -O - \
+            https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/snapshot/linux-${kernel_version}.tar.gz \
+          | tar xzf - ) \
+  && ( /usr/bin/test -d binutils-gdb \
+       || git clone --branch master --single-branch \
+             git://sourceware.org/git/binutils-gdb.git ) \
+  && ( /usr/bin/test -d glibc \
+       || git clone --branch master --single-branch \
+             https://sourceware.org/git/glibc.git ) \
+  && ( /usr/bin/test -d gcc \
+       || git clone --branch master --single-branch \
+             git://gcc.gnu.org/git/gcc.git ) \
   && cd /
-
-
-# setup sysroot
-RUN \
-  mkdir -p ${SYSROOT}/usr/{lib,bin} \
-  && ln -s usr/lib $SYSROOT/lib \
-  && ln -s usr/lib $SYSROOT/lib64 \
-  && ln -s usr/bin $SYSROOT/bin \
-  && ln -s usr/bin $SYSROOT/sbin \
-  && ln -s bin $SYSROOT/usr/sbin \
-  && ln -s lib $SYSROOT/usr/lib64
+  
 
 # make gmp
-RUN \
+RUN --mount=type=cache,ro=true,target=/source \
   mkdir /gmp-build \
   && cd /gmp-build \
-  && ../gmp-${gmp_version}/configure \
+  && /source/gmp-${gmp_version}/configure \
         --prefix=$PREFIX \
         --enable-cxx \
         --disable-static \
   && make -j${cpu_threads} \
   && make install \
-  && cd /
+  && cd / \
+  && rm -rf /gmp*
+
 
 # make mpfr
-RUN \
+RUN --mount=type=cache,ro=true,target=/source \
   mkdir /mpfr-build \
   && cd /mpfr-build \
   && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
-      ../mpfr-${mpfr_version}/configure \
+      /source/mpfr-${mpfr_version}/configure \
         --prefix=${PREFIX} \
         --with-gmp=${PREFIX} \
         --disable-static \
   && make -j${cpu_threads} \
   && make install \
-  && cd /
+  && cd / \
+  && rm -rf /mpfr*
+
 
 # make mpc
-RUN \
+RUN --mount=type=cache,ro=true,target=/source \
   mkdir /mpc-build \
   && cd /mpc-build \
   && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
-     ../mpc-${mpc_version}/configure \
+     /source/mpc-${mpc_version}/configure \
        --prefix=${PREFIX} \
        --with-gmp=${PREFIX} \
        --with-mpfr=${PREFIX} \
         --disable-static \
   && make -j${cpu_threads} \
   && make install \
-  && cd /
+  && cd / \
+  && rm -rf /mpc*
+
 
 # make isl
-RUN \
+RUN --mount=type=cache,ro=true,target=/source \
   mkdir /isl-build \
   && cd /isl-build \
   && LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
-      ../isl-${isl_version}/configure \
+      /source/isl-${isl_version}/configure \
         --prefix=${PREFIX} \
         --with-gmp-prefix=${PREFIX} \
         --disable-static \
   && make -j${cpu_threads} \
   && make install \
-  && cd /
+  && cd / \
+  && rm -rf /isl*
 
 
 # make binutils
-RUN \
-  cd /binutils-gdb \
-  && git pull \
-  && git checkout ${binutils_commit} \
+ARG SYSROOT=${PREFIX}/${target_triplet}/rootfs
+ARG binutils_extra_config
+RUN --mount=type=cache,ro=true,target=/source \
+  mkdir -p ${SYSROOT} \
+  && export MACHTYPE=$(gcc -dumpmachine) \
   && mkdir -p /binutils-build \
   && cd /binutils-build \
-  && /binutils-gdb/configure \
+  && /source/binutils-gdb/configure \
     --prefix=${PREFIX} \
     --host=${MACHTYPE} \
     --target=${target_triplet} \
@@ -135,33 +155,29 @@ RUN \
   && cd / \
   && rm -rf /binutils*
 
+
+ARG INCLUDE_DIR="${PREFIX}/${target_triplet}/include"
+
 # make kernel headers
-RUN \
-  mkdir -p /opt/${target_triplet}/${target_triplet} \
-  && cd linux-${kernel_version} \
+ARG kernel_arch
+RUN --mount=type=cache,target=/source \
+  mkdir -p ${SYSROOT} \
+  && cd /source/linux-${kernel_version} \
   && make ARCH=${kernel_arch} \
-      INSTALL_HDR_PATH=/opt/${target_triplet}/${target_triplet}/usr \
-      headers_install \
-  && cd / \
-  && rm -rf /linux-${kernel_version}*
+      INSTALL_HDR_PATH=${SYSROOT}/usr headers_install \
+  && cd / 
 
 # make static-gcc
-RUN \
-  cd /gcc \
-  && git pull \
-  && git checkout ${gcc_commit} \
-  && touch ${SYSROOT}/usr/include/limits.h \
-  && ln -s usr/include ${SYSROOT}/sys-include \
-  && mkdir -p /gcc-build \
+RUN --mount=type=cache,ro=true,target=/source \
+  mkdir -p /gcc-build \
   && cd /gcc-build \
   && AR=ar LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
-    /gcc/configure \
+    /source/gcc/configure \
       --prefix=${PREFIX} \
       --target=${target_triplet} \
       --build=${MACHTYPE} \
       --host=${MACHTYPE} \
-      --with-sysroot=$SYSROOT \
-      --with-native-system-header-dir=/usr/include \
+      --with-sysroot=${SYSROOT} \
       --without-headers \
       --with-newlib \
       --disable-shared \
@@ -186,81 +202,91 @@ RUN \
       --disable-werror \
   && make -j${cpu_threads} all-gcc all-target-libgcc \
   && make install-gcc install-target-libgcc \
-  && cd /
+  && cd / \
+  && rm -rf gcc-build
+
+
 
 # make glibc 
 # see https://sourceware.org/bugzilla/show_bug.cgi?id=24183
 # NOTE: need install_root=$SYSROOT so that libc.so linker script has
 # correct paths.
-RUN \
+ARG glibc_commit
+RUN --mount=type=cache,ro=true,target=/source \
   cd / \
-  && cd /glibc \
-  && git pull \
-  && git checkout ${glibc_commit} \
   && mkdir /glibc-build \
   && cd /glibc-build \
+  && export MACHTYPE=$(gcc -dumpmachine) \
   && BUILD_CC="gcc" CC="${target_triplet}-gcc" \
      CXX=${target_triplet}-g++ \
      AR="${target_triplet}-ar" RANLIB="${target_triplet}-ranlib" \
-   /glibc/configure \
+    /source/glibc/configure \
       --prefix=/usr \
       --host=${target_triplet} \
-      --build=$MACHTYPE \
+      --build=${MACHTYPE} \
+      --with-headers=${SYSROOT}/usr/include \
       --enable-kernel=$(echo ${kernel_version} | cut -d- -f1) \
-      --with-headers=$SYSROOT/usr/include \
       --with-binutils=${PREFIX}/bin \
-      --disable-multi-arch \
+      --enable-shared \
       --disable-profile \
       --disable-werror ${glibc_extra_config} \
   && make -j${cpu_threads} \
-  && make install install_root=$SYSROOT \
-  && cd /
+  && make install install_root=${SYSROOT} \
+  && mkdir -p ${SYSROOT}/usr/lib \
+  && ( ( /usr/bin/test -d ${SYSROOT}/lib \
+         && cp -a ${SYSROOT}/lib/* ${SYSROOT}/usr/lib/ \
+         && rm -rf ${SYSROOT}/lib \
+         && ln -s usr/lib ${SYSROOT}/lib ) \
+     || ln -s usr/lib ${SYSROOT}/lib ) \
+  && ( ( /usr/bin/test -d ${SYSROOT}/lib64 \
+         && cp -a ${SYSROOT}/lib64/* ${SYSROOT}/usr/lib/  \
+         && rm -rf ${SYSROOT}/lib64 \
+         && ln -s usr/lib ${SYSROOT}/lib64 ) \
+     || ln -s usr/lib ${SYSROOT}/lib64 ) \
+  && ( ( /usr/bin/test -d ${SYSROOT}//usr/lib64 \
+         && cp -a ${SYSROOT}/usr/lib64/* ${SYSROOT}/usr/lib/  \
+         && rm -rf ${SYSROOT}/usr/lib64 \
+         && ln -s lib ${SYSROOT}/usr/lib64 ) \
+     || ln -s lib ${SYSROOT}/usr/lib64 ) \
+  && cd ${PREFIX}/${target_triplet} \
+  && mv lib/* ${SYSROOT}/usr/lib/ \
+  && rm -r lib \
+  && ln -s ${SYSROOT}/usr/lib* \
+  && cd / \
+  && rm -rf /glibc*
 
-
-# TODO: Add gcc_extra_config
 ## make final compiler
-RUN \
-  cd /gcc-build \
-  && make distclean \
+RUN --mount=type=cache,ro=true,target=/source \
+  mkdir gcc-build \
+  && cd /gcc-build \
+  && export MACHTYPE=$(gcc -dumpmachine) \
   && AR=ar LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
-      /gcc/configure \
+      /source/gcc/configure \
           --prefix=${PREFIX} \
           --target=${target_triplet} \
           --host=${MACHTYPE} \
           --build=${MACHTYPE} \
           --with-sysroot=${SYSROOT} \
-          --with-native-system-header-dir=/usr/include \
-          --disable-static \
           --enable-languages=c,c++ \
           --enable-threads=posix \
           --enable-tls \
-          --enable-__cxa_atexit \
           --with-mpc=${PREFIX} \
           --with-mpfr=${PREFIX} \
           --with-gmp=${PREFIX} \
           --with-isl=${PREFIX} \
-          #--with-system-zlib \
           --disable-multilib \
           --enable-checking=release \
-          --enable-libstdcxx-time \
           ${gcc_extra_config} \
   && make AS_FOR_TARGET=${target_triplet}-as \
           LD_FOR_TARGET=${target_triplet}-ld \
           -j${cpu_threads} \
-  && make install
+  && make install \
+  && cd / \
+  && rm -rf /gcc*
 
 ## clean up
 RUN \
   cd / \
-  && rm -rf \
-        /gcc* \
-        /binutils* \
-        /glibc* \
-        /isl* \
-        /gmp* \
-        /mpc* \
-        /mpfr* \
-        /linux-* \
   && ((find $PREFIX -not -type d -executable \
         | xargs file \
         | grep ELF \
@@ -281,8 +307,5 @@ RUN \
         build-essential \
         file \
         texinfo \
-        python3 \
-  && apt-get autoremove --yes \
-  && apt-get autoclean --yes \
-  && rm -rf /var/lib/apt/lists/*
+        python3 
 
