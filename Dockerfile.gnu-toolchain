@@ -9,7 +9,7 @@ ARG gcc_commit
 ARG gmp_version=6.2.1
 ARG mpfr_version=4.1.0
 ARG mpc_version=1.2.1
-ARG isl_version=0.24
+ARG isl_version=0.25
 ARG kernel_version
 ARG kernel_arch
 ARG target_triplet
@@ -101,11 +101,19 @@ RUN \
   && make install \
   && cd /
 
+
 # make binutils
 RUN \
   cd /binutils-gdb \
   && git pull \
   && git checkout ${binutils_commit} \
+  && mkdir -p ${SYSROOT}/usr/{lib,bin} \
+  && ln -s usr/lib $SYSROOT/lib \
+  && ln -s usr/lib64 $SYSROOT/lib \
+  && ln -s usr/bin $SYSROOT/bin \
+  && ln -s usr/sbin $SYSROOT/sbin \
+  && ln -s bin $SYSROOT/usr/sbin \
+  && ln -s lib $SYSROOT/usr/lib64 \
   && mkdir -p /binutils-build \
   && cd /binutils-build \
   && /binutils-gdb/configure \
@@ -113,12 +121,10 @@ RUN \
     --host=${MACHTYPE} \
     --target=${target_triplet} \
     --with-sysroot=${SYSROOT} \
-    --with-libpath=${SYSROOT}/lib \
     --with-gmp=${PREFIX} \
     --with-mpfr=${PREFIX} \
     --with-mpc=${PREFIX} \
     --with-isl=${PREFIX} \
-    --enable-64-bit-bfd \
     --disable-multilib \
     --disable-werror ${binutils_extra_config} \
   && make -j${cpu_threads} \
@@ -142,6 +148,7 @@ RUN \
   && git pull \
   && git checkout ${gcc_commit} \
   && touch ${SYSROOT}/usr/include/limits.h \
+  && ln -s usr/include ${SYSROOT}/sys-include \
   && mkdir -p /gcc-build \
   && cd /gcc-build \
   && AR=ar LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
@@ -151,11 +158,10 @@ RUN \
       --build=${MACHTYPE} \
       --host=${MACHTYPE} \
       --with-sysroot=$SYSROOT \
-      --with-local-prefix=${SYSROOT} \
-      --with-native-system-header-dir=${SYSROOT}/usr/include \
+      --with-native-system-header-dir=/usr/include \
       --without-headers \
-      --disable-shared \
       --with-newlib \
+      --disable-shared \
       --disable-decimal-float \
       --disable-libgomp \
       --disable-libmudflap \
@@ -179,8 +185,10 @@ RUN \
   && make install-gcc install-target-libgcc \
   && cd /
 
-# see https://sourceware.org/bugzilla/show_bug.cgi?id=24183
 # make glibc 
+# see https://sourceware.org/bugzilla/show_bug.cgi?id=24183
+# NOTE: need install_root=$SYSROOT so that libc.so linker script has
+# correct paths.
 RUN \
   cd / \
   && cd /glibc \
@@ -192,19 +200,17 @@ RUN \
      CXX=${target_triplet}-g++ \
      AR="${target_triplet}-ar" RANLIB="${target_triplet}-ranlib" \
    /glibc/configure \
-      --prefix=${SYSROOT} \
+      --prefix=/usr \
       --host=${target_triplet} \
       --build=$MACHTYPE \
       --enable-kernel=$(echo ${kernel_version} | cut -d- -f1) \
-      --libdir=${SYSROOT}/lib \
-      --includedir=$SYSROOT/usr/include \
       --with-headers=$SYSROOT/usr/include \
       --with-binutils=${PREFIX}/bin \
-      --enable-obsolete-rpc \
+      --disable-multi-arch \
       --disable-profile \
       --disable-werror ${glibc_extra_config} \
   && make -j${cpu_threads} \
-  && make install \
+  && make install install_root=$SYSROOT \
   && cd /
 
 
@@ -220,12 +226,12 @@ RUN \
           --host=${MACHTYPE} \
           --build=${MACHTYPE} \
           --with-sysroot=${SYSROOT} \
-          --with-local-prefix=${SYSROOT} \
-          --with-headers=$SYSROOT/usr/include \
           --with-native-system-header-dir=/usr/include \
           --disable-static \
           --enable-languages=c,c++ \
           --enable-threads=posix \
+          --enable-tls \
+          --enable-__cxa_atexit \
           --with-mpc=${PREFIX} \
           --with-mpfr=${PREFIX} \
           --with-gmp=${PREFIX} \
