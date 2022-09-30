@@ -419,14 +419,63 @@ class Option:
     def value(self) -> Optional[Any]:
         return self._value
 
+    def __hash__(self):
+        return hash(self.name) if self.long_name is None else hash(
+            self.long_name)
 
-# TODO: Write CMakeProject, extract commonalities with
-# MakeProject and abstract them into Project
+
 class Project(ABC):
-    pass
+
+    @abstractmethod
+    def configure(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def build(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def install(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def test(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def test_dependencies(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def test_reverse_dependencies(self) -> Ret:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _get_dependencies(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _get_reverse_dependencies(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _get_available_options(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _get_current_config(self):
+        raise NotImplementedError()
+
+    @property
+    def dependencies(self):
+        return self._get_dependencies()
+
+    @property
+    def reverse_dependencies(self):
+        return self._get_reverse_dependencies()
 
 
-class MakeProject(Project):
+class MakeProject(Project, Repo):
     """Subclasses represent specific projects built using Make and friends."""
     _name: str
     _configuration_options: Set[Option]
@@ -434,11 +483,11 @@ class MakeProject(Project):
     _default_config_env: Dict[str, str]
     _default_make_args: List[str]
     _default_install_args: List[str]
+    _dependencies: Set[PackageDependency]
+    _conflicts: Set[PackageDependency]
     _repo: Repo
 
     def __init_subclass__(cls,
-                          name: str,
-                          repo: Repo,
                           /,
                           default_config: list = [],
                           default_config_env: dict = {},
@@ -447,8 +496,6 @@ class MakeProject(Project):
                           default_install_args: list = [],
                           **kwargs):
         super().__init_subclass__(**kwargs)
-        cls._name = name
-        cls._repo = repo
         cls._default_config = default_config
         cls._default_config_env = default_config_env
         cls._config_conflicts = config_conflicts
@@ -566,10 +613,10 @@ class MakeProject(Project):
 
     @classmethod
     def _get_default_config_env(cls):
-        ret = getattr(cls, "_default_config_env", [])
+        ret = getattr(cls, "_default_config_env", {})
         for c in cls.__bases__:
             # use | ret to allow subclasses to override defaults
-            ret = getattr(c, "default_config_env", lambda: [])() | ret
+            ret = getattr(c, "_get_default_config_env", lambda: [])() | ret
         return ret
 
     @property
@@ -699,7 +746,7 @@ class LibISL(ToolchainSupportLib):
                          **kwargs)
 
 
-class Binutils(MakeProject):
+class Binutils(MakeProject, GitRepo):
     _default_config = [
         "--prefix={prefix}", "--host={host_triplet}",
         "--build={build_triplet}", "--target={target_triplet}",
